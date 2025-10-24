@@ -180,6 +180,7 @@ Other common parameters include:
 * @ExportToExcel = 1 - turn this on, and it doesn't return XML fields that would hinder you from copy/pasting the data into Excel.
 * @ExpertMode = 1 - turn this on, and you get more columns with more data. Doesn't take longer to run though.
 * @IgnoreSystemDBs = 0 - if you want to show queries in master/model/msdb. By default we hide these. Additionally hides queries from databases named `dbadmin`, `dbmaintenance`, and `dbatools`.
+* @IgnoreReadableReplicaDBs = 0 - if you want to analyze the plan cache on an Availability Group readable replica. You will also have to connect to the replica using ApplicationIntent = ReadOnly, since SQL Server itself will abort queries that try to do work in readable secondaries.
 * @MinimumExecutionCount = 0 - in servers like data warehouses where lots of queries only run a few times, you can set a floor number for examination.
 
 [*Back to top*](#header1)
@@ -287,6 +288,7 @@ In addition to the [parameters common to many of the stored procedures](#paramet
 
 * @SkipPartitions = 1 - add this if you want to analyze large partitioned tables. We skip these by default for performance reasons.
 * @SkipStatistics = 0 - right now, by default, we skip statistics analysis because we've had some performance issues on this.
+* @UsualStatisticsSamplingPercent = 100 (default) - By default, @SkipStatistics = 0 with either @Mode = 0 or @Mode = 4 does not inform you of persisted statistics sample rates if that rate is 100. Use a different float if you usually persist a different sample percentage and do not want to be warned about it. Use NULL if you want to hear about every persisted sample rate.
 * @Filter = 0 (default) - 1=No low-usage warnings for objects with 0 reads. 2=Only warn for objects >= 500MB
 * @OutputDatabaseName, @OutputSchemaName, @OutputTableName - these only work for @Mode = 2, index usage detail.
 
@@ -300,7 +302,6 @@ In addition to the [parameters common to many of the stored procedures](#paramet
 Checks either the System Health session or a specific Extended Event session that captures deadlocks and parses out all the XML for you.
 
 Parameters you can use:
-* @Top: Use if you want to limit the number of deadlocks to return. This is ordered by event date ascending.
 * @DatabaseName: If you want to filter to a specific database
 * @StartDate: The date you want to start searching on.
 * @EndDate: The date you want to stop searching on.
@@ -462,7 +463,7 @@ Parameters include:
 * @Debug - default 0. When 1, we print out messages of what we're doing in the messages tab of SSMS.
 * @StopAt NVARCHAR(14) - pass in a date time to stop your restores at a time like '20170508201501'. This doesn't use the StopAt parameter for the restore command - it simply stops restoring logs that would have this date/time's contents in it. (For example, if you're taking backups every 15 minutes on the hour, and you pass in 9:05 AM as part of the restore time, the restores would stop at your last log backup that doesn't include 9:05AM's data - but it won't restore right up to 9:05 AM.)
 * @SkipBackupsAlreadyInMsdb - default 0. When set to 1, we check MSDB for the most recently restored backup from this log path, and skip all backup files prior to that. Useful if you're pulling backups from across a slow network and you don't want to wait to check the restore header of each backup.
-
+* @EnableBroker - default 0. When set to 1, we run RESTORE WITH ENABLE_BROKER, enabling the service broker. Unless specified, the service broker is disabled on restore even if it was enabled when the backup was taken.
 
 For information about how this works, see [Tara Kizer's white paper on Log Shipping 2.0 with Google Compute Engine.](https://www.brentozar.com/archive/2017/03/new-white-paper-build-sql-server-disaster-recovery-plan-google-compute-engine/)
 

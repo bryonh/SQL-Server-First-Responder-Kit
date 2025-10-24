@@ -6,8 +6,8 @@ Before adding a new check, make sure to add a Github issue for it first, and hav
 
 If you want to change anything about a check - the priority, finding, URL, or ID - open a Github issue first. The relevant scripts have to be updated too.
 
-CURRENT HIGH CHECKID: 262.
-If you want to add a new one, start at 263.
+CURRENT HIGH CHECKID: 271.
+If you want to add a new one, start at 272.
 
 | Priority | FindingsGroup | Finding | URL | CheckID |
 |----------|-----------------------------|---------------------------------------------------------|------------------------------------------------------------------------|----------|
@@ -26,12 +26,14 @@ If you want to add a new one, start at 263.
 | 1 | Corruption | Database Corruption Detected | https://www.BrentOzar.com/go/repair | 90 |
 | 1 | Performance | Memory Dangerously Low | https://www.BrentOzar.com/go/max | 51 |
 | 1 | Performance | Memory Dangerously Low in NUMA Nodes | https://www.BrentOzar.com/go/max | 159 |
+| 1 | Performance | Memory Dangerously Low Recently | https://www.BrentOzar.com/go/memhistory | 270 |
 | 1 | Reliability | Evaluation Edition | https://www.BrentOzar.com/go/workgroup | 229 |
 | 1 | Reliability | Last good DBCC CHECKDB over 2 weeks old | https://www.BrentOzar.com/go/checkdb | 68 |
 | 1 | Security | Dangerous Service Account | https://vladdba.com/SQLServerSvcAccount | 258 |
 | 1 | Security | Dangerous Service Account | https://vladdba.com/SQLServerSvcAccount | 259 |
 | 1 | Security | Dangerous Service Account | https://vladdba.com/SQLServerSvcAccount | 260 |
 | 1 | Security | Dangerous Service Account | https://vladdba.com/SQLServerSvcAccount | 261 |
+| 5 | Availability | AG Replica Falling Behind | https://www.BrentOzar.com/go/ag | 268 |
 | 5 | Monitoring | Disabled Internal Monitoring Features | https://msdn.microsoft.com/en-us/library/ms190737.aspx | 177 |
 | 5 | Reliability | Dangerous Third Party Modules | https://support.microsoft.com/en-us/kb/2033238 | 179 |
 | 5 | Reliability | Priority Boost Enabled | https://www.BrentOzar.com/go/priorityboost | 126 |
@@ -129,6 +131,7 @@ If you want to add a new one, start at 263.
 | 170 | File Configuration | High VLF Count | https://www.BrentOzar.com/go/vlf | 69 |
 | 170 | File Configuration | Multiple Log Files on One Drive | https://www.BrentOzar.com/go/manylogs | 41 |
 | 170 | File Configuration | System Database on C Drive | https://www.BrentOzar.com/go/drivec | 24 |
+| 170 | File Configuration | TempDB Governor Config Problem | https://www.BrentOzar.com/go/tempdbrg | 271 |
 | 170 | File Configuration | TempDB Has >16 Data Files | https://www.BrentOzar.com/go/tempdb | 175 |
 | 170 | File Configuration | TempDB Only Has 1 Data File | https://www.BrentOzar.com/go/tempdb | 40 |
 | 170 | File Configuration | TempDB Unevenly Sized Data Files | https://www.BrentOzar.com/go/tempdb | 183 |
@@ -153,7 +156,7 @@ If you want to add a new one, start at 263.
 | 200 | Informational | Tables in the Master Database | https://www.BrentOzar.com/go/mastuser | 27 |
 | 200 | Informational | Tables in the Model Database | https://www.BrentOzar.com/go/model | 29 |
 | 200 | Informational | Tables in the MSDB Database | https://www.BrentOzar.com/go/msdbuser | 28 |
-| 200 | Informational | TraceFlag On | https://www.BrentOzar.com/go/traceflags/ | 74 |
+| 200 | Informational | TraceFlag On / Recommended Trace Flag Off | https://www.BrentOzar.com/go/traceflags/ | 74 |
 | 200 | Licensing | Enterprise Edition Features In Use | https://www.BrentOzar.com/go/ee | 33 |
 | 200 | Licensing | Non-Production License | https://www.BrentOzar.com/go/licensing | 173 |
 | 200 | Monitoring | Agent Jobs Without Failure Emails | https://www.BrentOzar.com/go/alerts | 94 |
@@ -241,6 +244,7 @@ If you want to add a new one, start at 263.
 | 200 | Non-Default Server Config | user options | https://www.BrentOzar.com/go/conf | 1063 |
 | 200 | Non-Default Server Config | Web Assistant Procedures | https://www.BrentOzar.com/go/conf | 1064 |
 | 200 | Non-Default Server Config | xp_cmdshell | https://www.BrentOzar.com/go/conf | 1065 |
+| 200 | Non-Default Server Config | Configuration Changed | https://www.BrentOzar.com/go/conf | 269 |
 | 200 | Performance | Buffer Pool Extensions Enabled | https://www.BrentOzar.com/go/bpe | 174 |
 | 200 | Performance | Default Parallelism Settings | https://www.BrentOzar.com/go/cxpacket | 188 |
 | 200 | Performance | In-Memory OLTP (Hekaton) In Use | https://www.BrentOzar.com/go/hekaton | 146 |
@@ -248,6 +252,9 @@ If you want to add a new one, start at 263.
 | 200 | Performance | Old Compatibility Level | https://www.BrentOzar.com/go/compatlevel | 62 |
 | 200 | Performance | Query Store Disabled | https://www.BrentOzar.com/go/querystore | 163 |
 | 200 | Performance | Query Store Wait Stats Disabled | https://www.sqlskills.com/blogs/erin/query-store-settings/ | 262 |
+| 200 | Performance | Query Store Effectively Disabled | https://learn.microsoft.com/en-us/sql/relational-databases/performance/best-practice-with-the-query-store#Verify | 263 |
+| 200 | Performance | Undesired Query Store State | https://learn.microsoft.com/en-us/sql/relational-databases/performance/best-practice-with-the-query-store#Verify | 264 |
+| 200 | Performance | Query Store Unusually Configured | https://www.sqlskills.com/blogs/erin/query-store-best-practices/ | 265 |
 | 200 | Performance | Snapshot Backups Occurring | https://www.BrentOzar.com/go/snaps | 178 |
 | 200 | Performance | User-Created Statistics In Place | https://www.BrentOzar.com/go/userstats | 122 |
 | 200 | Performance | SSAS/SSIS/SSRS Installed | https://www.BrentOzar.com/go/services | 224 |
@@ -273,6 +280,7 @@ If you want to add a new one, start at 263.
 | 210 | Non-Default Database Scoped Config | Legacy CE | https://www.BrentOzar.com/go/dbscope | 195 |
 | 210 | Non-Default Database Scoped Config | Parameter Sniffing | https://www.BrentOzar.com/go/dbscope | 196 |
 | 210 | Non-Default Database Scoped Config | Query Optimizer Hotfixes | https://www.BrentOzar.com/go/dbscope | 197 |
+| 210 | Non-Default Database Scoped Config | All Others | https://www.BrentOzar.com/go/dbscope | 267 |
 | 230 | Security | Control Server Permissions | https://www.BrentOzar.com/go/sa | 104 |
 | 230 | Security | Database Owner <> SA | https://www.BrentOzar.com/go/owndb | 55 |
 | 230 | Security | Database Owner is Unknown |  | 213 |
@@ -298,6 +306,7 @@ If you want to add a new one, start at 263.
 | 250 | Server Info | Drive Space |  | 92 |
 | 250 | Server Info | Full-text Filter Daemon is Currently Offline |  | 168 |
 | 250 | Server Info | Hardware |  | 84 |
+| 250 | Server Info | Hardware - Memory Counters | https://www.BrentOzar.com/go/target | 266 |
 | 250 | Server Info | Hardware - NUMA Config |  | 114 |
 | 250 | Server Info | Instant File Initialization Enabled | https://www.BrentOzar.com/go/instant | 193 |
 | 250 | Server Info | Locked Pages in Memory Enabled | https://www.BrentOzar.com/go/lpim | 166 |
