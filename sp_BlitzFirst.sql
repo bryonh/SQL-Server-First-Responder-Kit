@@ -47,7 +47,7 @@ SET NOCOUNT ON;
 SET STATISTICS XML OFF;
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
-SELECT @Version = '8.26', @VersionDate = '20251002';
+SELECT @Version = '8.28', @VersionDate = '20251124';
 
 IF(@VersionCheckMode = 1)
 BEGIN
@@ -2587,7 +2587,7 @@ If one of them is a lead blocker, consider killing that query.'' AS HowToStopit,
 											 N' this is likely due to an Index operation in Progress', -1;
 					END
 					ELSE
-					BEGIN
+					BEGIN;
 						THROW;
 					END
 				END CATCH

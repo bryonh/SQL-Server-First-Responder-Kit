@@ -39,7 +39,7 @@ AS
 	SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 	
 
-	SELECT @Version = '8.26', @VersionDate = '20251002';
+	SELECT @Version = '8.28', @VersionDate = '20251124';
 	SET @OutputType = UPPER(@OutputType);
 
     IF(@VersionCheckMode = 1)
@@ -570,8 +570,7 @@ AS
         SELECT
 		    DB_NAME(d.database_id)
         FROM sys.databases AS d
-        WHERE (DB_NAME(d.database_id) LIKE 'rdsadmin%'
-		         OR LOWER(d.name) IN ('dbatools', 'dbadmin', 'dbmaintenance'))
+        WHERE LOWER(d.name) IN ('dbatools', 'dbadmin', 'dbmaintenance', 'rdsadmin')
 		OPTION(RECOMPILE);
 
 		/*Skip checks for database where we don't have read permissions*/
@@ -2047,7 +2046,9 @@ AS
 					  ''Performance'' AS FindingsGroup,
 					  ''Server Triggers Enabled'' AS Finding,
 					  ''https://www.brentozar.com/go/logontriggers/'' AS URL,
-					  (''Server Trigger ['' + [name] ++ ''] is enabled.  Make sure you understand what that trigger is doing - the less work it does, the better.'') AS Details FROM sys.server_triggers WHERE is_disabled = 0 AND is_ms_shipped = 0  OPTION (RECOMPILE);';
+					  (''Server Trigger ['' + [name] ++ ''] is enabled.  Make sure you understand what that trigger is doing - the less work it does, the better.'') AS Details
+					  FROM sys.server_triggers
+					  WHERE is_disabled = 0 AND is_ms_shipped = 0 AND name NOT LIKE ''rds^_%'' ESCAPE ''^'' OPTION (RECOMPILE);';
 
 								IF @Debug = 2 AND @StringToExecute IS NOT NULL PRINT @StringToExecute;
 								IF @Debug = 2 AND @StringToExecute IS NULL PRINT '@StringToExecute has gone NULL, for some reason.';
@@ -2706,7 +2707,8 @@ AS
 										  + '. Tables in the master database may not be restored in the event of a disaster.' ) AS Details
 								FROM    master.sys.tables
 								WHERE   is_ms_shipped = 0
-                                  AND   name NOT IN ('CommandLog','SqlServerVersions','$ndo$srvproperty');
+                                  AND   name NOT IN ('CommandLog','SqlServerVersions','$ndo$srvproperty')
+								  AND	name NOT LIKE 'rds^_%' ESCAPE '^';
 								  /* That last one is the Dynamics NAV licensing table: https://github.com/BrentOzarULTD/SQL-Server-First-Responder-Kit/issues/2426 */
 					END;
 
@@ -3740,6 +3742,14 @@ AS
 
 						IF @Debug IN (1, 2) RAISERROR('Running CheckId [%d].', 0, 1, 94) WITH NOWAIT;
 
+						;WITH las_job_run AS (
+											SELECT  MAX(instance_id) AS instance_id, 
+													job_id, COUNT_BIG(*) AS job_executions,
+													SUM(CASE WHEN run_status = 0 THEN 1 ELSE 0 END) AS failed_executions
+											FROM msdb.dbo.sysjobhistory
+											WHERE step_id = 0
+											GROUP BY job_id
+											)
 						INSERT  INTO #BlitzResults
 								( CheckID ,
 								  Priority ,
@@ -3754,8 +3764,32 @@ AS
 										'Agent Jobs Without Failure Emails' AS Finding ,
 										'https://www.brentozar.com/go/alerts' AS URL ,
 										'The job ' + [name]
-										+ ' has not been set up to notify an operator if it fails.' AS Details
+										+ ' has not been set up to notify an operator if it fails.' 
+										+ CASE 
+											WHEN jh.run_date IS NULL OR jh.run_time IS NULL OR jh.run_status IS NULL THEN ''
+											ELSE N' Executions: '+ CAST(ljr.job_executions AS VARCHAR(30)) 
+												+ CASE ljr.failed_executions
+													WHEN 0 THEN N''
+													ELSE N' ('+CAST(ljr.failed_executions AS NVARCHAR(10)) + N' failed)'
+													END
+												+ N' - last execution started on '
+												+ CAST(CONVERT(DATE,CAST(jh.run_date AS NVARCHAR(8)),113) AS NVARCHAR(10)) 
+												+ N', at ' 
+												+ STUFF(STUFF(RIGHT(N'000000' + CAST(jh.run_time AS varchar(6)),6),3,0,N':'),6,0,N':')
+												+ N', with status "'
+												+ CASE jh.run_status 
+														WHEN 0 THEN N'Failed'
+														WHEN 1 THEN N'Succeeded'
+														WHEN 2 THEN N'Retry'
+														WHEN 3 THEN N'Canceled'
+														WHEN 4 THEN N'In Progress'
+													END +N'".'
+											END	AS Details
 								FROM    msdb.[dbo].[sysjobs] j
+										LEFT JOIN las_job_run ljr 
+											ON ljr.job_id = j.job_id
+										LEFT JOIN msdb.[dbo].[sysjobhistory] jh
+											ON ljr.job_id = jh.job_id AND ljr.instance_id = jh.instance_id
 								WHERE   j.enabled = 1
 										AND j.notify_email_operator_id = 0
 										AND j.notify_netsend_operator_id = 0
@@ -4883,12 +4917,12 @@ AS
 								SET @StringToExecute = 'INSERT INTO #BlitzResults (CheckID, DatabaseName, Priority, FindingsGroup, Finding, URL, Details)
 								   SELECT ' + CAST(@CurrentCheckID AS NVARCHAR(200)) + ', d.[name], ' + CAST(@CurrentPriority AS NVARCHAR(200)) + ', ''Non-Default Database Config'', ''' + @CurrentFinding + ''',''' + @CurrentURL + ''',''' + COALESCE(@CurrentDetails, 'This database setting is not the default.') + '''
 									FROM sys.databases d
-									WHERE d.database_id > 4 AND d.state = 0 AND (d.[' + @CurrentName + '] NOT IN (0, 60) OR d.[' + @CurrentName + '] IS NULL) OPTION (RECOMPILE);';
+									WHERE d.database_id > 4 AND DB_NAME(d.database_id) != ''rdsadmin'' AND d.state = 0 AND (d.[' + @CurrentName + '] NOT IN (0, 60) OR d.[' + @CurrentName + '] IS NULL) OPTION (RECOMPILE);';
 							ELSE
 								SET @StringToExecute = 'INSERT INTO #BlitzResults (CheckID, DatabaseName, Priority, FindingsGroup, Finding, URL, Details)
 								   SELECT ' + CAST(@CurrentCheckID AS NVARCHAR(200)) + ', d.[name], ' + CAST(@CurrentPriority AS NVARCHAR(200)) + ', ''Non-Default Database Config'', ''' + @CurrentFinding + ''',''' + @CurrentURL + ''',''' + COALESCE(@CurrentDetails, 'This database setting is not the default.') + '''
 									FROM sys.databases d
-									WHERE d.database_id > 4 AND d.state = 0 AND (d.[' + @CurrentName + '] <> ' + @CurrentDefaultValue + ' OR d.[' + @CurrentName + '] IS NULL) OPTION (RECOMPILE);';
+									WHERE d.database_id > 4 AND DB_NAME(d.database_id) != ''rdsadmin'' AND d.state = 0 AND (d.[' + @CurrentName + '] <> ' + @CurrentDefaultValue + ' OR d.[' + @CurrentName + '] IS NULL) OPTION (RECOMPILE);';
 						
 							IF @Debug = 2 AND @StringToExecute IS NOT NULL PRINT @StringToExecute;
 							IF @Debug = 2 AND @StringToExecute IS NULL PRINT '@StringToExecute has gone NULL, for some reason.';
@@ -4900,6 +4934,38 @@ AS
 
 						CLOSE DatabaseDefaultsLoop;
 						DEALLOCATE DatabaseDefaultsLoop;
+
+/* CheckID 272 - Performance - Optimized Locking Not Fully Set Up */
+IF EXISTS (SELECT * FROM sys.all_columns WHERE name = 'is_optimized_locking_on' AND object_id = OBJECT_ID('sys.databases'))
+			   AND NOT EXISTS ( SELECT  1
+							    FROM    #SkipChecks
+							    WHERE   DatabaseName IS NULL AND CheckID = 272 )
+				BEGIN
+					IF @Debug IN (1, 2) RAISERROR('Running CheckId [%d].', 0, 1, 272) WITH NOWAIT;
+						
+					SET @StringToExecute = N'
+					INSERT    INTO [#BlitzResults]
+							( [CheckID] ,
+								[Priority] ,
+								[FindingsGroup] ,
+								[Finding] ,
+								[DatabaseName] ,
+								[URL] ,
+								[Details] )
+
+					SELECT
+					272 AS [CheckID] ,
+					100 AS [Priority] ,
+					''Performance'' AS [FindingsGroup] ,
+					''Optimized Locking Not Fully Set Up'' AS [Finding] ,
+					name,
+					''https://www.brentozar.com/go/optimizedlocking'' AS [URL] ,
+					''RCSI should be enabled on this database to get the full benefits of optimized locking.''  AS [Details]
+					FROM sys.databases
+					WHERE is_optimized_locking_on = 1 AND is_read_committed_snapshot_on = 0;'
+
+					EXEC(@StringToExecute);
+				END; 
 
 /* Check if target recovery interval <> 60 */
 IF
@@ -6754,17 +6820,21 @@ IF @ProductVersionMajor >= 10
 
 
 				IF NOT EXISTS ( SELECT  1
-								FROM    #SkipChecks
-								WHERE   DatabaseName IS NULL AND CheckID = 271 )
-					AND EXISTS (SELECT * FROM sys.all_columns WHERE name = 'group_max_tempdb_data_percent')
-						AND EXISTS (SELECT * FROM sys.all_columns WHERE name = 'group_max_tempdb_data_mb')
+							FROM    #SkipChecks
+							WHERE   DatabaseName IS NULL AND CheckID = 271 )
+				AND EXISTS (SELECT * FROM sys.all_columns WHERE name = 'group_max_tempdb_data_percent'
+				                    AND [object_id] = OBJECT_ID('sys.resource_governor_workload_groups'))
+					AND EXISTS (SELECT * FROM sys.all_columns WHERE name = 'group_max_tempdb_data_mb'
+					                AND [object_id] = OBJECT_ID('sys.resource_governor_workload_groups'))
 					BEGIN
 						
 						IF @Debug IN (1, 2) RAISERROR('Running CheckId [%d].', 0, 1, 271) WITH NOWAIT;
 						
-						IF EXISTS (SELECT * FROM sys.resource_governor_workload_groups
-									WHERE group_max_tempdb_data_percent <> 0
-									  AND group_max_tempdb_data_mb IS NULL)
+						SET @tsql = N'SELECT @ExecRet_Out = COUNT(1) FROM sys.resource_governor_workload_groups
+						WHERE group_max_tempdb_data_percent <> 0
+						  AND group_max_tempdb_data_mb IS NULL';
+						EXEC @ExecRet = sp_executesql @tsql, N'@ExecRet_Out INT OUTPUT', @ExecRet_Out = @ExecRet OUTPUT;
+						IF @ExecRet > 0
 							BEGIN
 							DECLARE @TempDBfiles TABLE (config VARCHAR(50), data_files INT)
 							/* Valid configs */
@@ -6873,7 +6943,7 @@ IF @ProductVersionMajor >= 10
 		                              ''https://www.brentozar.com/go/querystore'',
 		                              (''The new SQL Server 2016 Query Store feature has not been enabled on this database.'')
 		                              FROM [?].sys.database_query_store_options WHERE desired_state = 0
-									  AND N''?'' NOT IN (''master'', ''model'', ''msdb'', ''tempdb'', ''DWConfiguration'', ''DWDiagnostics'', ''DWQueue'', ''ReportServer'', ''ReportServerTempDB'') OPTION (RECOMPILE)';
+									  AND ''?'' NOT IN (''master'', ''model'', ''msdb'', ''rdsadmin'', ''tempdb'', ''DWConfiguration'', ''DWDiagnostics'', ''DWQueue'', ''ReportServer'', ''ReportServerTempDB'') OPTION (RECOMPILE)';
 							END;
 
 						IF NOT EXISTS ( SELECT  1
@@ -6905,6 +6975,7 @@ IF @ProductVersionMajor >= 10
 		                              FROM [?].sys.database_query_store_options
 									  WHERE desired_state <> 0
 									  AND wait_stats_capture_mode = 0
+									  AND ''?'' != ''rdsadmin''
 									  OPTION (RECOMPILE)';
 							END;
                     
@@ -6936,6 +7007,7 @@ IF @ProductVersionMajor >= 10
 		                              FROM [?].sys.database_query_store_options
 									  WHERE desired_state <> 0
 									  AND actual_state <> 2
+									  AND ''?'' != ''rdsadmin''
 									  OPTION (RECOMPILE)';
 							END;
 
@@ -6967,6 +7039,7 @@ IF @ProductVersionMajor >= 10
 		                              FROM [?].sys.database_query_store_options
 									  WHERE desired_state <> 0
 									  AND desired_state <> actual_state 
+									  AND ''?'' != ''rdsadmin''
 									  OPTION (RECOMPILE)';
 							END;
 
@@ -7002,6 +7075,7 @@ IF @ProductVersionMajor >= 10
 		                              FROM [?].sys.database_query_store_options
 									  WHERE desired_state <> 0 /* No point in checking this if Query Store is off. */
 									  AND query_capture_mode_desc <> ''AUTO''
+									  AND ''?'' != ''rdsadmin''
 									  OPTION (RECOMPILE)';
 							END;
 						
@@ -7032,7 +7106,9 @@ IF @ProductVersionMajor >= 10
 													''https://www.brentozar.com/go/cleanup'',
 													(''SQL 2016 RTM has a bug involving dumps that happen every time Query Store cleanup jobs run. This is fixed in CU1 and later: https://sqlserverupdates.com/sql-server-2016-updates/'')
 													FROM    sys.databases AS d
-													WHERE   d.is_query_store_on = 1 OPTION (RECOMPILE);';
+													WHERE   d.is_query_store_on = 1
+													AND		d.name != ''rdsadmin''
+													OPTION (RECOMPILE);';
 							
 							IF @Debug = 2 AND @StringToExecute IS NOT NULL PRINT @StringToExecute;
 							IF @Debug = 2 AND @StringToExecute IS NULL PRINT '@StringToExecute has gone NULL, for some reason.';
@@ -7068,7 +7144,7 @@ IF @ProductVersionMajor >= 10
 		                              FROM [?].sys.database_query_store_options dqso
 										join master.sys.databases D on D.name = N''?''
 									  WHERE ((dqso.actual_state = 0 AND D.is_query_store_on = 1) OR (dqso.actual_state <> 0 AND D.is_query_store_on = 0))
-									  AND N''?'' NOT IN (''master'', ''model'', ''msdb'', ''tempdb'', ''DWConfiguration'', ''DWDiagnostics'', ''DWQueue'', ''ReportServer'', ''ReportServerTempDB'') OPTION (RECOMPILE)';
+									  AND ''?'' NOT IN (''master'', ''model'', ''msdb'', ''rdsadmin'', ''tempdb'', ''DWConfiguration'', ''DWDiagnostics'', ''DWQueue'', ''ReportServer'', ''ReportServerTempDB'') OPTION (RECOMPILE)';
 							END;
 
 				        IF NOT EXISTS ( SELECT  1
@@ -7096,7 +7172,7 @@ IF @ProductVersionMajor >= 10
 		                              ''https://www.brentozar.com/go/manylogs'',
 		                              (''The ['' + DB_NAME() + ''] database has multiple log files on the '' + LEFT(physical_name, 1) + '' drive. This is not a performance booster because log file access is sequential, not parallel.'')
 		                              FROM [?].sys.database_files WHERE type_desc = ''LOG''
-			                            AND N''?'' <> ''[tempdb]''
+			                            AND ''?'' NOT IN (''rdsadmin'',''tempdb'')
 		                              GROUP BY LEFT(physical_name, 1)
 		                              HAVING COUNT(*) > 1 
 									     AND SUM(size) < 268435456 OPTION (RECOMPILE);';
@@ -7128,6 +7204,7 @@ IF @ProductVersionMajor >= 10
 			                            (''The ['' + DB_NAME() + ''] database has multiple data files in one filegroup, but they are not all set up to grow in identical amounts.  This can lead to uneven file activity inside the filegroup.'')
 			                            FROM [?].sys.database_files
 			                            WHERE type_desc = ''ROWS''
+										AND ''?'' != ''rdsadmin''
 			                            GROUP BY data_space_id
 			                            HAVING COUNT(DISTINCT growth) > 1 OR COUNT(DISTINCT is_percent_growth) > 1 OPTION (RECOMPILE);';
 					        END;
@@ -7156,7 +7233,9 @@ IF @ProductVersionMajor >= 10
 		                                ''https://www.brentozar.com/go/percentgrowth'' AS URL,
 		                                ''The ['' + DB_NAME() + ''] database file '' + f.physical_name + '' has grown to '' + CONVERT(NVARCHAR(20), CONVERT(NUMERIC(38, 2), (f.size / 128.) / 1024.)) + '' GB, and is using percent filegrowth settings. This can lead to slow performance during growths if Instant File Initialization is not enabled.''
 		                                FROM    [?].sys.database_files f
-		                                WHERE   is_percent_growth = 1 and size > 128000  OPTION (RECOMPILE);';
+		                                WHERE   is_percent_growth = 1 and size > 128000
+										AND		''?'' != ''rdsadmin''
+										OPTION (RECOMPILE);';
 					            END;
 
                             /* addition by Henrik Staun Poulsen, Stovi Software */
@@ -7184,7 +7263,9 @@ IF @ProductVersionMajor >= 10
 		                                ''https://www.brentozar.com/go/percentgrowth'' AS URL,
 										''The ['' + DB_NAME() + ''] database file '' + f.physical_name + '' is using 1MB filegrowth settings, but it has grown to '' + CAST((CAST(f.size AS BIGINT) * 8 / 1000000) AS NVARCHAR(10)) + '' GB. Time to up the growth amount.''
 										FROM    [?].sys.database_files f
-                                        WHERE is_percent_growth = 0 and growth=128 and size > 128000  OPTION (RECOMPILE);';
+                                        WHERE is_percent_growth = 0 and growth=128 and size > 128000
+										AND	   ''?'' != ''rdsadmin''
+										OPTION (RECOMPILE);';
 					            END;
 
 				        IF NOT EXISTS ( SELECT  1
@@ -7214,7 +7295,9 @@ IF @ProductVersionMajor >= 10
 		                                  ''Enterprise Edition Features In Use'',
 		                                  ''https://www.brentozar.com/go/ee'',
 		                                  (''The ['' + DB_NAME() + ''] database is using '' + feature_name + ''.  If this database is restored onto a Standard Edition server, the restore will fail on versions prior to 2016 SP1.'')
-		                                  FROM [?].sys.dm_db_persisted_sku_features OPTION (RECOMPILE);';
+		                                  FROM [?].sys.dm_db_persisted_sku_features
+										  WHERE ''?'' != ''rdsadmin''
+										  OPTION (RECOMPILE);';
 							        END;
 					        END;
 
@@ -7272,8 +7355,9 @@ IF @ProductVersionMajor >= 10
 							          ''https://www.brentozar.com/go/repl'',
 							          (''['' + DB_NAME() + ''] has MSreplication_objects tables in it, indicating it is a replication subscriber.'')
 							          FROM [?].sys.tables
-							          WHERE name = ''dbo.MSreplication_objects'' AND ''?'' <> ''master'' OPTION (RECOMPILE)';
-
+							          WHERE name = ''dbo.MSreplication_objects''
+									  AND ''?'' NOT IN (''master'', ''rdsadmin'')
+									  OPTION (RECOMPILE)';
 					        END;
 
 						IF NOT EXISTS ( SELECT  1
@@ -7301,7 +7385,9 @@ IF @ProductVersionMajor >= 10
 			''https://www.brentozar.com/go/trig'',
 			(''The ['' + DB_NAME() + ''] database has '' + CAST(SUM(1) AS NVARCHAR(50)) + '' triggers.'')
 			FROM [?].sys.triggers t INNER JOIN [?].sys.objects o ON t.parent_id = o.object_id
-			INNER JOIN [?].sys.schemas s ON o.schema_id = s.schema_id WHERE t.is_ms_shipped = 0 AND DB_NAME() != ''ReportServer''
+			INNER JOIN [?].sys.schemas s ON o.schema_id = s.schema_id
+			WHERE t.is_ms_shipped = 0
+			AND ''?'' NOT IN (''rdsadmin'', ''ReportServer'')
 			HAVING SUM(1) > 0 OPTION (RECOMPILE)';
 							END;
 
@@ -7331,7 +7417,9 @@ IF @ProductVersionMajor >= 10
 		  ''Plan Guides Failing'',
 		  ''https://www.brentozar.com/go/misguided'',
 		  (''The ['' + DB_NAME() + ''] database has plan guides that are no longer valid, so the queries involved may be failing silently.'')
-		  FROM [?].sys.plan_guides g CROSS APPLY fn_validate_plan_guide(g.plan_guide_id) OPTION (RECOMPILE)';
+		  FROM [?].sys.plan_guides g CROSS APPLY fn_validate_plan_guide(g.plan_guide_id)
+		  WHERE ''?'' != ''rdsadmin''
+		  OPTION (RECOMPILE)';
 							END;
 
 						IF NOT EXISTS ( SELECT  1
@@ -7359,7 +7447,9 @@ IF @ProductVersionMajor >= 10
 		  ''https://www.brentozar.com/go/hypo'',
 		  (''The index ['' + DB_NAME() + ''].['' + s.name + ''].['' + o.name + ''].['' + i.name + ''] is a leftover hypothetical index from the Index Tuning Wizard or Database Tuning Advisor.  This index is not actually helping performance and should be removed.'')
 		  from [?].sys.indexes i INNER JOIN [?].sys.objects o ON i.object_id = o.object_id INNER JOIN [?].sys.schemas s ON o.schema_id = s.schema_id
-		  WHERE i.is_hypothetical = 1 OPTION (RECOMPILE);';
+		  WHERE i.is_hypothetical = 1
+		  AND ''?'' != ''rdsadmin''
+		  OPTION (RECOMPILE);';
 							END;
 
 						IF NOT EXISTS ( SELECT  1
@@ -7415,7 +7505,9 @@ IF @ProductVersionMajor >= 10
 		  ''https://www.brentozar.com/go/trust'',
 		  (''The ['' + DB_NAME() + ''] database has foreign keys that were probably disabled, data was changed, and then the key was enabled again.  Simply enabling the key is not enough for the optimizer to use this key - we have to alter the table using the WITH CHECK CHECK CONSTRAINT parameter.'')
 		  from [?].sys.foreign_keys i INNER JOIN [?].sys.objects o ON i.parent_object_id = o.object_id INNER JOIN [?].sys.schemas s ON o.schema_id = s.schema_id
-		  WHERE i.is_not_trusted = 1 AND i.is_not_for_replication = 0 AND i.is_disabled = 0 AND N''?'' NOT IN (''master'', ''model'', ''msdb'', ''ReportServer'', ''ReportServerTempDB'') OPTION (RECOMPILE);';
+		  WHERE i.is_not_trusted = 1 AND i.is_not_for_replication = 0 AND i.is_disabled = 0 AND ''?''
+		  NOT IN (''master'', ''model'', ''msdb'', ''rdsadmin'', ''ReportServer'', ''ReportServerTempDB'')
+		  OPTION (RECOMPILE);';
 							END;
 
 						IF NOT EXISTS ( SELECT  1
@@ -7904,8 +7996,10 @@ EXEC dbo.sp_MSforeachdb 'USE [?]; SET TRANSACTION ISOLATION LEVEL READ UNCOMMITT
 									INNER JOIN #DatabaseScopedConfigurationDefaults def1 ON dsc.configuration_id = def1.configuration_id
 									LEFT OUTER JOIN #DatabaseScopedConfigurationDefaults def ON dsc.configuration_id = def.configuration_id AND (cast(dsc.value as nvarchar(100)) = cast(def.default_value as nvarchar(100)) OR dsc.value IS NULL) AND (dsc.value_for_secondary = def.default_value_for_secondary OR dsc.value_for_secondary IS NULL)
 									LEFT OUTER JOIN #SkipChecks sk ON (sk.CheckID IS NULL OR def.CheckID = sk.CheckID) AND (sk.DatabaseName IS NULL OR sk.DatabaseName = DB_NAME())
-									WHERE def.configuration_id IS NULL AND sk.CheckID IS NULL ORDER BY 1
-									 OPTION (RECOMPILE);';
+									WHERE def.configuration_id IS NULL AND sk.CheckID IS NULL
+									AND ''?'' != ''rdsadmin''
+									ORDER BY 1
+									OPTION (RECOMPILE);';
 			END;
 
 			/* Check 218 - Show me the dodgy SET Options */
@@ -7942,6 +8036,7 @@ EXEC dbo.sp_MSforeachdb 'USE [?]; SET TRANSACTION ISOLATION LEVEL READ UNCOMMITT
 							OR sm.uses_quoted_identifier <> 1
 							)
 						AND o.is_ms_shipped = 0
+						AND ''?'' != ''rdsadmin''
 					HAVING COUNT(1) > 0;';
 			END; --of Check 218.
 
@@ -7973,7 +8068,9 @@ EXEC dbo.sp_MSforeachdb 'USE [?]; SET TRANSACTION ISOLATION LEVEL READ UNCOMMITT
                             + CAST(iro.sql_text AS NVARCHAR(1000)) AS Details
 					FROM sys.index_resumable_operations iro
 					JOIN sys.objects o ON iro.[object_id] = o.[object_id]
-					WHERE iro.state <> 0;';
+					WHERE iro.state <> 0
+					AND ''?'' != ''rdsadmin''
+					;';
 			END; --of Check 225.
 
 			--/* Check 220 - Statistics Without Histograms */
@@ -8007,7 +8104,7 @@ EXEC dbo.sp_MSforeachdb 'USE [?]; SET TRANSACTION ISOLATION LEVEL READ UNCOMMITT
    --                   WHERE o.is_ms_shipped = 0 AND o.type_desc = ''USER_TABLE''
    --                     AND h.object_id IS NULL
    --                     AND 0 < (SELECT SUM(row_count) FROM sys.dm_db_partition_stats ps WHERE ps.object_id = o.object_id)
-   --                     AND ''?'' NOT IN (''master'', ''model'', ''msdb'', ''tempdb'')
+   --                     AND ''?'' NOT IN (''master'', ''model'', ''msdb'', ''rdsadmin'', ''tempdb'')
    --                   HAVING COUNT(DISTINCT o.object_id) > 0;';
 			--END; --of Check 220.
 
